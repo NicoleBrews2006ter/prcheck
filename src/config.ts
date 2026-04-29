@@ -1,39 +1,44 @@
 import * as core from '@actions/core';
-import { LabelCheckerConfig } from './labelChecker';
+import * as fs from 'fs';
 
-export interface ActionConfig {
-  labelChecker: LabelCheckerConfig;
-  failOnError: boolean;
+export interface PRCheckConfig {
+  requireLabels: boolean;
+  allowedLabels: string[];
+  requiredLabels: string[];
+  descriptionTemplate: string;
+  requiredSections: string[];
+  failOnMissingDescription: boolean;
 }
 
-function parseCommaSeparated(input: string): string[] {
+export function parseCommaSeparated(input: string): string[] {
   return input
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter((s) => s.length > 0);
 }
 
-export function loadConfig(): ActionConfig {
-  const requiredLabels = parseCommaSeparated(
-    core.getInput('required-labels') || ''
-  );
-  const forbiddenLabels = parseCommaSeparated(
-    core.getInput('forbidden-labels') || ''
-  );
-  const requireAtLeastOne =
-    core.getInput('require-at-least-one-label') === 'true';
-  const failOnError = core.getInput('fail-on-error') !== 'false';
+function loadTemplateFromFile(templatePath: string): string {
+  try {
+    if (fs.existsSync(templatePath)) {
+      return fs.readFileSync(templatePath, 'utf8');
+    }
+  } catch (err) {
+    core.warning(`Could not read template file at ${templatePath}: ${err}`);
+  }
+  return '';
+}
 
-  core.debug(`Required labels: ${requiredLabels.join(', ') || 'none'}`);
-  core.debug(`Forbidden labels: ${forbiddenLabels.join(', ') || 'none'}`);
-  core.debug(`Require at least one: ${requireAtLeastOne}`);
+export function loadConfig(): PRCheckConfig {
+  const templatePath = core.getInput('description_template_path') || '.github/pull_request_template.md';
+  const inlineTemplate = core.getInput('description_template');
+  const descriptionTemplate = inlineTemplate || loadTemplateFromFile(templatePath);
 
   return {
-    labelChecker: {
-      requiredLabels,
-      forbiddenLabels,
-      requireAtLeastOne,
-    },
-    failOnError,
+    requireLabels: core.getInput('require_labels') === 'true',
+    allowedLabels: parseCommaSeparated(core.getInput('allowed_labels')),
+    requiredLabels: parseCommaSeparated(core.getInput('required_labels')),
+    descriptionTemplate,
+    requiredSections: parseCommaSeparated(core.getInput('required_sections')),
+    failOnMissingDescription: core.getInput('fail_on_missing_description') !== 'false',
   };
 }
