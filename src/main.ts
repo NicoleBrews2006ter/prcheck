@@ -1,14 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { loadConfig } from "./config";
+import { loadConfig, loadTemplateFromFile } from "./config";
+import { checkDescription, extractTemplatePlaceholders, checkRequiredSections } from "./descriptionChecker";
 import { checkLabels, extractPRLabels } from "./labelChecker";
-import { checkDescription } from "./descriptionChecker";
-import {
-  createCheckResult,
-  buildSummary,
-  logReport,
-  CheckResult,
-} from "./reporter";
+import { checkTitle } from "./titleChecker";
+import { createCheckResult, buildSummary, logReport } from "./reporter";
 
 async function run(): Promise<void> {
   try {
@@ -16,57 +12,58 @@ async function run(): Promise<void> {
     const pr = github.context.payload.pull_request;
 
     if (!pr) {
-      core.warning("This action should be triggered on pull_request events.");
+      core.setFailed("This action must be run on pull_request events.");
       return;
     }
 
-    const results: CheckResult[] = [];
+    const prTitle: string = pr.title ?? "";
     const prBody: string = pr.body ?? "";
-    const prLabels = extractPRLabels(github.context.payload);
+    const prLabels = extractPRLabels(pr);
+
+    const results = [];
+
+    // Title check
+    const titleResult = checkTitle(
+      prTitle,
+      config.titlePattern,
+      config.titleMinLength,
+      config.titleMaxLength
+    );
+    results.push(createCheckResult("Title", titleResult.passed, titleResult.message));
 
     // Description check
-    if (config.templateContent) {
-      const descResult = checkDescription(prBody, config.templateContent);
-      results.push(
-        createCheckResult(
-          "description",
-          descResult.valid ? "pass" : "fail",
-          descResult.valid
-            ? "PR description meets template requirements"
-            : "PR description is missing required sections",
-          descResult.missingSections
-        )
-      );
-    } else {
-      results.push(
-        createCheckResult("description", "skip", "No template configured")
-      );
+    let templateContent: string | null = null;
+    if (config.templateFile) {
+      templateContent = loadTemplateFromFile(config.templateFile);
+    }
+
+    if (templateContent) {
+      const placeholders = extractTemplatePlaceholders(templateContent);
+      const descResult = checkDescription(prBody, placeholders);
+      results.push(createCheckResult("Description (template)", descResult.passed, descResult.message));
+    }
+
+    if (config.requiredSections.length > 0) {
+      const sectionResult = checkRequiredSections(prBody, config.requiredSections);
+      results.push(createCheckResult("Description (sections)", sectionResult.passed, sectionResult.message));
     }
 
     // Label check
-    if (config.requiredLabels.length > 0 || config.labelGroups.length > 0) {
-      const labelResult = checkLabels(prLabels, config);
-      results.push(
-        createCheckResult(
-          "labels",
-          labelResult.valid ? "pass" : "fail",
-          labelResult.valid
-            ? "PR labels satisfy requirements"
-            : "PR labels do not satisfy requirements",
-          labelResult.errors
-        )
-      );
-    } else {
-      results.push(
-        createCheckResult("labels", "skip", "No label rules configured")
-      );
+    if (config.requiredLabels.length > 0) {
+      const labelResult = checkLabels(prLabels, config.requiredLabels, config.labelMatchAll);
+      results.push(createCheckResult("Labels", labelResult.passed, labelResult.message));
     }
 
-    logReport(buildSummary(results));
+    logReport(results);
+    const summary = buildSummary(results);
+
+    if (!summary.passed) {
+      core.setFailed(`PR check failed: ${summary.failedChecks.join(", ")}`);
+    } else {
+      core.info("All PR checks passed.");
+    }
   } catch (error) {
-    core.setFailed(
-      error instanceof Error ? error.message : "An unexpected error occurred"
-    );
+    core.setFailed(`Unexpected error: ${error}`);
   }
 }
 

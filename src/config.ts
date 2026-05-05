@@ -1,44 +1,48 @@
-import * as core from '@actions/core';
-import * as fs from 'fs';
+import * as core from "@actions/core";
+import * as fs from "fs";
 
 export interface PRCheckConfig {
-  requireLabels: boolean;
-  allowedLabels: string[];
   requiredLabels: string[];
-  descriptionTemplate: string;
+  labelMatchAll: boolean;
+  templateFile: string | null;
   requiredSections: string[];
-  failOnMissingDescription: boolean;
+  titlePattern: string | null;
+  titleMinLength: number;
+  titleMaxLength: number;
 }
 
-export function parseCommaSeparated(input: string): string[] {
-  return input
-    .split(',')
+export function parseCommaSeparated(value: string): string[] {
+  return value
+    .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
-function loadTemplateFromFile(templatePath: string): string {
+export function loadTemplateFromFile(filePath: string): string | null {
   try {
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-  } catch (err) {
-    core.warning(`Could not read template file at ${templatePath}: ${err}`);
+    return fs.readFileSync(filePath, "utf8");
+  } catch (e) {
+    core.warning(`Could not read template file "${filePath}": ${e}`);
+    return null;
   }
-  return '';
 }
 
 export function loadConfig(): PRCheckConfig {
-  const templatePath = core.getInput('description_template_path') || '.github/pull_request_template.md';
-  const inlineTemplate = core.getInput('description_template');
-  const descriptionTemplate = inlineTemplate || loadTemplateFromFile(templatePath);
+  const requiredLabelsRaw = core.getInput("required_labels");
+  const templateFile = core.getInput("template_file") || null;
+  const requiredSectionsRaw = core.getInput("required_sections");
+  const titlePattern = core.getInput("title_pattern") || null;
+  const titleMinLength = parseInt(core.getInput("title_min_length") || "10", 10);
+  const titleMaxLength = parseInt(core.getInput("title_max_length") || "72", 10);
+  const labelMatchAll = core.getInput("label_match_all") === "true";
 
   return {
-    requireLabels: core.getInput('require_labels') === 'true',
-    allowedLabels: parseCommaSeparated(core.getInput('allowed_labels')),
-    requiredLabels: parseCommaSeparated(core.getInput('required_labels')),
-    descriptionTemplate,
-    requiredSections: parseCommaSeparated(core.getInput('required_sections')),
-    failOnMissingDescription: core.getInput('fail_on_missing_description') !== 'false',
+    requiredLabels: parseCommaSeparated(requiredLabelsRaw),
+    labelMatchAll,
+    templateFile,
+    requiredSections: parseCommaSeparated(requiredSectionsRaw),
+    titlePattern,
+    titleMinLength: isNaN(titleMinLength) ? 10 : titleMinLength,
+    titleMaxLength: isNaN(titleMaxLength) ? 72 : titleMaxLength,
   };
 }
