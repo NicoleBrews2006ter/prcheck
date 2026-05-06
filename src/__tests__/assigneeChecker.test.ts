@@ -1,76 +1,62 @@
-import { checkAssignees, extractAssigneeLogins, AssigneeCheckerConfig } from '../assigneeChecker';
+import { extractAssigneeLogins, checkAssignees } from '../assigneeChecker';
 
-const defaultConfig: AssigneeCheckerConfig = {
-  requireAssignee: false,
-  minAssignees: 0,
-  maxAssignees: 0,
-  allowedAssignees: [],
-};
-
-function makeContext(logins: string[]) {
-  return { assignees: logins.map((login) => ({ login })) };
+function makeContext(assignees: { login: string }[]) {
+  return {
+    payload: {
+      pull_request: {
+        assignees,
+      },
+    },
+  };
 }
 
 describe('extractAssigneeLogins', () => {
   it('returns empty array when no assignees', () => {
-    expect(extractAssigneeLogins(makeContext([]))).toEqual([]);
+    const ctx = makeContext([]);
+    expect(extractAssigneeLogins(ctx as any)).toEqual([]);
   });
 
-  it('returns logins from assignees', () => {
-    expect(extractAssigneeLogins(makeContext(['alice', 'bob']))).toEqual(['alice', 'bob']);
+  it('extracts login names from assignees', () => {
+    const ctx = makeContext([{ login: 'alice' }, { login: 'bob' }]);
+    expect(extractAssigneeLogins(ctx as any)).toEqual(['alice', 'bob']);
+  });
+
+  it('returns empty array when pull_request is missing', () => {
+    expect(extractAssigneeLogins({ payload: {} } as any)).toEqual([]);
   });
 });
 
 describe('checkAssignees', () => {
-  it('passes when no constraints and no assignees', () => {
-    const result = checkAssignees(makeContext([]), defaultConfig);
-    expect(result.passed).toBe(true);
-    expect(result.messages).toHaveLength(0);
-  });
-
-  it('fails when requireAssignee is true and no assignees present', () => {
-    const config = { ...defaultConfig, requireAssignee: true };
-    const result = checkAssignees(makeContext([]), config);
-    expect(result.passed).toBe(false);
-    expect(result.messages[0]).toMatch(/at least one assignee/);
-  });
-
-  it('passes when requireAssignee is true and assignee is present', () => {
-    const config = { ...defaultConfig, requireAssignee: true };
-    const result = checkAssignees(makeContext(['alice']), config);
+  it('passes when assignee count meets minimum', () => {
+    const result = checkAssignees(['alice'], { minAssignees: 1, maxAssignees: 0, requiredAssignees: [] });
     expect(result.passed).toBe(true);
   });
 
-  it('fails when count is below minAssignees', () => {
-    const config = { ...defaultConfig, minAssignees: 2 };
-    const result = checkAssignees(makeContext(['alice']), config);
+  it('fails when fewer assignees than minimum', () => {
+    const result = checkAssignees([], { minAssignees: 1, maxAssignees: 0, requiredAssignees: [] });
     expect(result.passed).toBe(false);
-    expect(result.messages[0]).toMatch(/at least 2/);
+    expect(result.message).toMatch(/at least 1/);
   });
 
-  it('fails when count exceeds maxAssignees', () => {
-    const config = { ...defaultConfig, maxAssignees: 1 };
-    const result = checkAssignees(makeContext(['alice', 'bob']), config);
+  it('fails when more assignees than maximum', () => {
+    const result = checkAssignees(['alice', 'bob', 'carol'], { minAssignees: 1, maxAssignees: 2, requiredAssignees: [] });
     expect(result.passed).toBe(false);
-    expect(result.messages[0]).toMatch(/no more than 1/);
+    expect(result.message).toMatch(/at most 2/);
   });
 
-  it('passes when count is within min and max bounds', () => {
-    const config = { ...defaultConfig, minAssignees: 1, maxAssignees: 3 };
-    const result = checkAssignees(makeContext(['alice', 'bob']), config);
+  it('passes when max is 0 (unlimited)', () => {
+    const result = checkAssignees(['alice', 'bob', 'carol'], { minAssignees: 1, maxAssignees: 0, requiredAssignees: [] });
     expect(result.passed).toBe(true);
   });
 
-  it('fails when assignee is not in allowedAssignees list', () => {
-    const config = { ...defaultConfig, allowedAssignees: ['alice'] };
-    const result = checkAssignees(makeContext(['alice', 'charlie']), config);
+  it('fails when required assignee is missing', () => {
+    const result = checkAssignees(['alice'], { minAssignees: 1, maxAssignees: 0, requiredAssignees: ['bob'] });
     expect(result.passed).toBe(false);
-    expect(result.messages[0]).toMatch(/charlie/);
+    expect(result.message).toMatch(/bob/);
   });
 
-  it('passes when all assignees are in allowedAssignees list', () => {
-    const config = { ...defaultConfig, allowedAssignees: ['alice', 'bob'] };
-    const result = checkAssignees(makeContext(['alice', 'bob']), config);
+  it('passes when all required assignees are present', () => {
+    const result = checkAssignees(['alice', 'bob'], { minAssignees: 1, maxAssignees: 0, requiredAssignees: ['bob'] });
     expect(result.passed).toBe(true);
   });
 });

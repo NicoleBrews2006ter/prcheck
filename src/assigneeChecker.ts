@@ -1,64 +1,57 @@
-import * as core from '@actions/core';
-import { CheckResult } from './reporter';
+import { Context } from '@actions/github/lib/context';
 
-export interface AssigneeCheckerConfig {
-  requireAssignee: boolean;
+export interface AssigneeCheckOptions {
   minAssignees: number;
   maxAssignees: number;
-  allowedAssignees: string[];
+  requiredAssignees: string[];
 }
 
-export interface PullRequestAssigneeContext {
-  assignees: Array<{ login: string }>;
+export interface AssigneeCheckResult {
+  passed: boolean;
+  message: string;
 }
 
-export function extractAssigneeLogins(context: PullRequestAssigneeContext): string[] {
-  return context.assignees.map((a) => a.login);
+export function extractAssigneeLogins(context: Context): string[] {
+  const pr = context.payload?.pull_request;
+  if (!pr || !Array.isArray(pr.assignees)) {
+    return [];
+  }
+  return pr.assignees.map((a: { login: string }) => a.login);
 }
 
 export function checkAssignees(
-  context: PullRequestAssigneeContext,
-  config: AssigneeCheckerConfig
-): CheckResult {
-  const assignees = extractAssigneeLogins(context);
+  assignees: string[],
+  options: AssigneeCheckOptions
+): AssigneeCheckResult {
   const count = assignees.length;
-  const messages: string[] = [];
 
-  if (config.requireAssignee && count === 0) {
-    messages.push('PR must have at least one assignee.');
+  if (count < options.minAssignees) {
+    return {
+      passed: false,
+      message: `PR must have at least ${options.minAssignees} assignee(s), but found ${count}.`,
+    };
   }
 
-  if (count < config.minAssignees) {
-    messages.push(
-      `PR must have at least ${config.minAssignees} assignee(s), but found ${count}.`
-    );
+  if (options.maxAssignees > 0 && count > options.maxAssignees) {
+    return {
+      passed: false,
+      message: `PR must have at most ${options.maxAssignees} assignee(s), but found ${count}.`,
+    };
   }
 
-  if (config.maxAssignees > 0 && count > config.maxAssignees) {
-    messages.push(
-      `PR must have no more than ${config.maxAssignees} assignee(s), but found ${count}.`
-    );
-  }
+  const missing = options.requiredAssignees.filter(
+    (required) => !assignees.includes(required)
+  );
 
-  if (config.allowedAssignees.length > 0) {
-    const disallowed = assignees.filter(
-      (login) => !config.allowedAssignees.includes(login)
-    );
-    if (disallowed.length > 0) {
-      messages.push(
-        `The following assignees are not in the allowed list: ${disallowed.join(', ')}.`
-      );
-    }
-  }
-
-  const passed = messages.length === 0;
-
-  if (!passed) {
-    messages.forEach((msg) => core.warning(msg));
+  if (missing.length > 0) {
+    return {
+      passed: false,
+      message: `PR is missing required assignee(s): ${missing.join(', ')}.`,
+    };
   }
 
   return {
-    passed,
-    messages,
+    passed: true,
+    message: `Assignee check passed (${count} assignee(s)).`,
   };
 }
