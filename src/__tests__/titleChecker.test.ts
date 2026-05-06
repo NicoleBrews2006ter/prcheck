@@ -54,4 +54,20 @@ describe("checkTitle", () => {
     const result = checkTitle(long, null, 5, 0);
     expect(result.passed).toBe(true);
   });
+
+  it("ignores minLength when set to 0", () => {
+    const result = checkTitle("hi", null, 0, 72);
+    expect(result.passed).toBe(true);
+  });
+
+  it("title at exactly minLength boundary passes", () => {
+    const result = checkTitle("hello", null, 5, 72);
+    expect(result.passed).toBe(true);
+  });
+
+  it("title at exactly maxLength boundary passes", () => {
+    const title = "a".repeat(72);
+    const result = checkTitle(title, null, 5, 72);
+    expect(result.passed).toBe(true);
+  });
 });
