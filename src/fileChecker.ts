@@ -21,6 +21,14 @@ export function extractChangedFiles(
   return fileNames;
 }
 
+/**
+ * Tests whether a filename matches a glob pattern.
+ * Supports `*` (any sequence of characters) and `?` (any single character).
+ *
+ * @param pattern - Glob pattern to match against (e.g. `"*.ts"`, `"src/**"`)
+ * @param filename - The filename or path to test
+ * @returns `true` if the filename matches the pattern
+ */
 export function matchesGlob(pattern: string, filename: string): boolean {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -29,6 +37,14 @@ export function matchesGlob(pattern: string, filename: string): boolean {
   return new RegExp(`^${escaped}$`).test(filename);
 }
 
+/**
+ * Checks a list of changed files against the provided configuration rules.
+ *
+ * @param config - Rules defining forbidden files, required files, and max file count
+ * @param filesChanged - Total number of files changed in the pull request
+ * @param fileNames - List of filenames changed in the pull request
+ * @returns A result object describing which checks passed or failed
+ */
 export function checkFiles(
   config: FileCheckerConfig,
   filesChanged: number,
