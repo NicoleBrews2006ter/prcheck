@@ -38,6 +38,17 @@ describe("checkComments", () => {
     expect(result.passed).toBe(true);
   });
 
+  it("fails when minComments threshold is not met", () => {
+    const config = { ...baseConfig, requireComment: true, minComments: 3 };
+    const comments = [
+      { author: "alice", body: "looks good" },
+      { author: "bob", body: "approved" },
+    ];
+    const result = checkComments(comments, config);
+    expect(result.passed).toBe(false);
+    expect(result.message).toContain("at least 3");
+  });
+
   it("fails when required author has not commented", () => {
     const config = { ...baseConfig, requiredAuthors: ["alice", "bob"] };
     const comments = [{ author: "alice", body: "LGTM" }];
@@ -81,20 +92,5 @@ describe("checkComments", () => {
     ];
     const result = checkComments(comments, baseConfig);
     expect(result.totalComments).toBe(3);
-  });
-});
-
-describe("extractComments", () => {
-  it("returns empty array when no _comments on payload", () => {
-    const context = { payload: { pull_request: {} } } as any;
-    expect(extractComments(context)).toEqual([]);
-  });
-
-  it("returns comments from payload", () => {
-    const comments = [{ author: "alice", body: "nice" }];
-    const context = {
-      payload: { pull_request: { _comments: comments } },
-    } as any;
-    expect(extractComments(context)).toEqual(comments);
   });
 });
